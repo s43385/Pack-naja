@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Island Packing 3D - Ultimate Edition</title>
+    <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: 'Kanit', sans-serif;
+            user-select: none;
+            -webkit-user-select: none;
+            overflow: hidden;
+            margin: 0;
+            padding: 0;
+            background: #0b0f19;
+        }
+        .glass {
+            background: rgba(15, 23, 42, 0.85);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+        }
+    </style>
+    <script src="https://unpkg.com/three@0.128.0/build/three.min.js"></script>
+    <script src="https://unpkg.com/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+</head>
+<body class="w-screen h-screen relative overflow-hidden text-white">
+
+    <div id="start-screen" class="absolute inset-0 bg-slate-950/95 z-50 flex flex-col items-center justify-center p-4 text-center">
+        <div class="text-7xl mb-4 animate-bounce">📦🌴🍓</div>
+        <h1 class="text-4xl font-extrabold text-amber-400 mb-2">Island Packing 3D</h1>
+        <p class="text-slate-300 max-w-sm mb-6 text-sm">
+            หมุนหน้าจอ 360 องศาเพื่อหาของซ่อน และ **เลื่อนลูกกลิ้งเมาส์เพื่อซูมเข้า-ออก** หาผลไม้รูปทรง 3D สีสดใสสะดุดตา!
+        </p>
+        <button onclick="startGame()" class="bg-gradient-to-tr from-amber-500 to-yellow-400 hover:from-amber-600 hover:to-yellow-500 text-slate-950 font-black px-8 py-4 rounded-3xl text-xl shadow-2xl transition transform active:scale-95">
+            เริ่มลุยกันเลย! 🎮
+        </button>
+    </div>
+
+    <div id="canvas-container" class="w-full h-full absolute inset-0 z-0"></div>
+
+    <div id="game-ui" class="hidden absolute inset-0 pointer-events-none z-10 flex flex-col justify-between p-4">
+        
+        <div class="flex justify-between items-start w-full gap-4">
+            <div class="glass p-4 rounded-2xl pointer-events-auto flex flex-col gap-0.5 shadow-lg min-w-[130px]">
+                <div class="text-[11px] text-slate-400">ยอดเงินสะสม</div>
+                <div class="text-2xl font-extrabold text-yellow-400">🪙 <span id="money-display">100</span></div>
+                <div class="text-[10px] text-slate-300">ออเดอร์สำเร็จ: <span id="score-display" class="font-bold text-white">0</span></div>
+            </div>
+
+            <div id="order-board" class="glass p-4 rounded-2xl pointer-events-auto shadow-lg min-w-[280px] border-t-4 border-emerald-400">
+                <div class="flex justify-between items-center mb-1.5">
+                    <span class="text-xs font-bold text-emerald-300 flex items-center gap-1">📋 ออเดอร์แพ็คด่วน</span>
+                    <span id="order-timer-text" class="text-xs font-bold bg-emerald-500/30 px-2 py-0.5 rounded-full">45s</span>
+                </div>
+                <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden mb-2">
+                    <div id="order-timer-bar" class="bg-gradient-to-r from-emerald-400 to-green-300 h-full w-full transition-all duration-100"></div>
+                </div>
+                <div id="order-items-list" class="flex flex-col gap-1"></div>
+            </div>
+        </div>
+
+        <div id="resting-panel" class="hidden absolute inset-0 flex items-center justify-center bg-black/60 z-20 backdrop-blur-sm">
+            <div class="glass p-6 rounded-3xl text-center max-w-xs pointer-events-auto border-2 border-amber-400 animate-bounce shadow-2xl">
+                <div class="text-5xl mb-2">☕🌴</div>
+                <h3 class="text-xl font-extrabold text-amber-400 mb-1">แพ็คจัดส่งเรียบร้อย!</h3>
+                <p class="text-xs text-slate-300 mb-4">หยุดเวลาให้แล้วจ้า พักผ่อนได้ตามใจชอบ เมื่อพร้อมลุยออเดอร์ถัดไปกดปุ่มด้านล่างได้เลย!</p>
+                <button onclick="acceptNextOrder()" class="w-full bg-gradient-to-tr from-amber-500 to-yellow-400 text-slate-950 font-extrabold py-3 rounded-2xl text-base shadow-lg hover:brightness-110 active:scale-95 transition">
+                    รับออเดอร์ถัดไป 📦
+                </button>
+            </div>
+        </div>
+
+        <div class="flex justify-between items-end w-full gap-4">
+            <div class="glass px-4 py-2.5 rounded-xl pointer-events-auto text-xs text-slate-200 border border-blue-400/20 max-w-xs">
+                💡 <span class="leading-relaxed">🖱️ **ลากเมาส์/ปัดหน้าจอ** เพื่อหมุนเกาะ 360°<br>🔍 **เลื่อนลูกกลิ้งเมาส์ / จีบนิ้ว** เพื่อซูมเข้า-ออก</span>
+            </div>
+        </div>
+    </div>
+
+    <div id="floating-container" class="absolute inset-0 pointer-events-none z-20"></div>
+
+    <script>
+        // --- GAME STATE ---
+        const state = {
+            money: 100,
+            score: 0,
+            items: [],
+            maxItems: 45, 
+            activeOrder: null,
+            orderTimer: 45,
+            orderMaxTime: 45,
+            gameStarted: false,
+            isResting: false
+        };
+
+        // ตั้งค่าผลไม้รูปทรงเรขาคณิต 3D แท้ สีสะท้อนแสงแวววาว (Glossy Finish)
+        const ITEM_TYPES = [
+            { id: 'tomato', name: 'มะเขือเทศ', color: 0xff2222, shape: 'sphere', icon: '🔴', value: 25 },
+            { id: 'carrot', name: 'แครอท', color: 0xff8800, shape: 'cone', icon: '🟠', value: 45 },
+            { id: 'cabbage', name: 'กะหล่ำปลี', color: 0x00ff66, shape: 'cube', icon: '🟢', value: 80 },
+            { id: 'blueberry', name: 'บลูเบอร์รี่', color: 0x0077ff, shape: 'torus', icon: '🔵', value: 120 },
+            { id: 'dragon', name: 'แก้วมังกร', color: 0xff0066, shape: 'octahedron', icon: '🌸', value: 160 },
+            { id: 'grape', name: 'องุ่นม่วง', color: 0x9900ff, shape: 'sphere_cluster', icon: '🍇', value: 220 }
+        ];
+
+        // --- THREE.JS GRAPHICS SETUP ---
+        let scene, camera, renderer, controls;
+        let raycaster = new THREE.Raycaster();
+        let mouse = new THREE.Vector2();
+        let isMouseDown = false;
+        let mouseMoveDistance = 0;
+        let mouseDownPos = { x: 0, y: 0 };
+
+        function init3D() {
+            const container = document.getElementById('canvas-container');
+            
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x0a0e17); // พื้นหลังสีกรมท่าเข้มเฉดอวกาศ ช่วยให้ผลไม้สีสันโดดเด่นมาก
+
+            // เรนเดอร์เรอร์ระบบ WebGL ทั่วไป
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+            renderer.setSize(container.clientWidth, container.clientHeight);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            renderer.toneMapping = THREE.ACESFilmicToneMapping;
+            renderer.toneMappingExposure = 1.3;
+            container.appendChild(renderer.domElement);
+
+            camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 1000);
+            camera.position.set(0, 10, 15);
+
+            // เปิดใช้งานระบบหมุน 360 และ ซูมเต็มรูปแบบ
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+            controls.enableZoom = true; // เปิดให้เลื่อนเมาส์ซูมเข้าออกได้ชัวร์ 100%
+            controls.minDistance = 5;   // ล็อคระยะซูมเข้าสุด
+            controls.maxDistance = 25;  // ล็อคระยะซูมออกสุด
+            controls.maxPolarAngle = Math.PI / 2.1; // ป้องกันกล้องมุดใต้ดิน
+            controls.target.set(0, 0, 0);
+
+            // ตั้งค่าระบบแสงเน้นความคมชัดสร้างมิติเงาตกกระทบ (3D Depth)
+            const ambient = new THREE.AmbientLight(0xffffff, 0.7); // แสงกระจายสว่างสดใส
+            scene.add(ambient);
+
+            const sunLight = new THREE.DirectionalLight(0xffffff, 1.5); // แสงแดดส่องสว่างมีมิติ
+            sunLight.position.set(10, 20, 10);
+            sunLight.castShadow = true;
+            sunLight.shadow.mapSize.width = 2048;
+            sunLight.shadow.mapSize.height = 2048;
+            scene.add(sunLight);
+
+            // ผืนเกาะ 3D ด้านบนเขียวขอบทรายเหลือง
+            const islandGeo = new THREE.CylinderGeometry(8.0, 8.3, 1.2, 32);
+            const islandMat = new THREE.MeshStandardMaterial({ color: 0x1e3f20, roughness: 0.8 }); // พื้นดินสีหญ้าเข้มเขียว
+            const island = new THREE.Mesh(islandGeo, islandMat);
+            island.receiveShadow = true;
+            island.position.y = -0.6;
+            scene.add(island);
+
+            // กล่องรับพัสดุม่วงเรืองแสงตรงกลางเกาะ
+            const boxGeo = new THREE.BoxGeometry(1.6, 0.9, 1.6);
+            const boxMat = new THREE.MeshStandardMaterial({ 
+                color: 0x8b5cf6, 
+                roughness: 0.2, 
+                metalness: 0.5,
+                emissive: 0x8b5cf6,
+                emissiveIntensity: 0.2 
+            });
+            const mainBox = new THREE.Mesh(boxGeo, boxMat);
+            mainBox.position.set(0, 0.45, 0);
+            mainBox.castShadow = true;
+            mainBox.receiveShadow = true;
+            scene.add(mainBox);
+
+            // สปอว์นต้นไม้ตกแต่งและเพิ่มจุดบดบังมุมกล้อง
+            createTree(-4.5, -2);
+            createTree(4, 3);
+            createTree(-2, 4.5);
+
+            window.addEventListener('resize', onWindowResize);
+            
+            // ตรวจจับพฤติกรรมสัมผัสเพื่อแยกระหว่าง "การหมุนกล้อง" กับ "การจิ้มเก็บผลไม้"
+            container.addEventListener('pointerdown', (e) => {
+                isMouseDown = true;
+                mouseMoveDistance = 0;
+                mouseDownPos.x = e.clientX;
+                mouseDownPos.y = e.clientY;
+            });
+
+            container.addEventListener('pointermove', (e) => {
+                if (isMouseDown) {
+                    mouseMoveDistance += Math.hypot(e.clientX - mouseDownPos.x, e.clientY - mouseDownPos.y);
+                    mouseDownPos.x = e.clientX;
+                    mouseDownPos.y = e.clientY;
+                }
+            });
+
+            container.addEventListener('pointerup', (e) => {
+                isMouseDown = false;
+                // ถ้าขยับมือลากน้อยมาก ถือเป็นการ "คลิกจิ้มเลือกของ" ไม่ใช่การหมุนมุมกล้อง
+                if (mouseMoveDistance < 8) {
+                    onItemSelect(e);
+                }
+            });
+        }
+
+        function createTree(x, z) {
+            const tree = new THREE.Group();
+            
+            const trunk = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.12, 0.2, 1.8, 8),
+                new THREE.MeshStandardMaterial({ color: 0x4a2c11, roughness: 0.9 })
+            );
+            trunk.position.y = 0.9;
+            trunk.castShadow = true;
+            tree.add(trunk);
+
+            const leaves = new THREE.Mesh(
+                new THREE.DodecahedronGeometry(0.85, 1),
+                new THREE.MeshStandardMaterial({ color: 0x10b981, roughness: 0.8, flatShading: true })
+            );
+            leaves.position.y = 2.1;
+            leaves.castShadow = true;
+            tree.add(leaves);
+
+            tree.position.set(x, -0.1, z);
+            scene.add(tree);
+        }
+
+        // --- GAME LOGIC ---
+
+        function startGame() {
+            document.getElementById('start-screen').style.display = 'none';
+            document.getElementById('game-ui').classList.remove('hidden');
+            state.gameStarted = true;
+
+            init3D();
+            
+            // สปอว์นผลไม้กระจายทั่วทิศเกาะ
+            for (let i = 0; i < state.maxItems; i++) {
+                spawnItem3D();
+            }
+
+            createOrder();
+            animate();
+        }
+
+        function spawnItem3D() {
+            const type = ITEM_TYPES[Math.floor(Math.random() * ITEM_TYPES.length)];
+            
+            let geo;
+            // ใช้โครงสร้างแบบ 3D เรขาคณิตแท้ทั้งหมด
+            if (type.shape === 'sphere') {
+                geo = new THREE.SphereGeometry(0.3, 24, 24); // ทรงกลมเนียนกริบ
+            } else if (type.shape === 'cone') {
+                geo = new THREE.ConeGeometry(0.25, 0.65, 16); // ทรงกรวยแหลมคม
+            } else if (type.shape === 'cube') {
+                geo = new THREE.BoxGeometry(0.48, 0.48, 0.48); // ทรงลูกบาศก์สี่เหลี่ยมเป๊ะๆ
+            } else if (type.shape === 'torus') {
+                geo = new THREE.TorusGeometry(0.2, 0.08, 12, 24); // ทรงห่วงยางกลม
+            } else if (type.shape === 'octahedron') {
+                geo = new THREE.OctahedronGeometry(0.32, 0); // ทรงเหลี่ยมเพชรคมชัด
+            } else {
+                geo = new THREE.SphereGeometry(0.32, 16, 16); // องุ่น
+            }
+
+            // ตั้งค่าวัสดุเคลือบผิวเงาวาวแบบ High-Gloss สะท้อนแสงชัดเจนเด่นเด้ง
+            const mat = new THREE.MeshPhongMaterial({
+                color: type.color,
+                shininess: 90, // เพิ่มประกายเงาสะท้อนระดับสูงสุด
+                specular: 0xffffff,
+                emissive: type.color,
+                emissiveIntensity: 0.15 // เรืองแสงเล็กน้อย ป้องกันการหมองคล้ำยามเข้ามุมมืด
+            });
+
+            const mesh = new THREE.Mesh(geo, mat);
+            mesh.castShadow = true;
+            mesh.receiveShadow = true;
+
+            // สุ่มที่วางรอบนอกเกาะ ไม่ทับกล่องพัสดุตรงกลาง
+            const angle = Math.random() * Math.PI * 2;
+            const r = 1.8 + Math.random() * 5.8;
+            mesh.position.set(Math.cos(angle) * r, 0.35, Math.sin(angle) * r);
+
+            scene.add(mesh);
+
+            state.items.push({
+                mesh: mesh,
+                type: type,
+                state: 'idle',
+                originPos: mesh.position.clone(),
+                flyProgress: 0,
+                bounceOffset: Math.random() * 10
+            });
+        }
+
+        function createOrder() {
+            const orderList = [];
+            let maxSpecies = 2;
+            if (state.score >= 2) maxSpecies = 3;
+            if (state.score >= 5) maxSpecies = 4;
+            const numSpecies = Math.floor(Math.random() * (maxSpecies - 1)) + 2;
+
+            const shuffled = [...ITEM_TYPES].sort(() => Math.random() - 0.5);
+            const selected = shuffled.slice(0, numSpecies);
+
+            selected.forEach(type => {
+                const quantity = Math.floor(Math.random() * 3) + 1;
+                orderList.push({ type: type, needed: quantity, packed: 0 });
+            });
+
+            state.activeOrder = orderList;
+            state.orderTimer = state.orderMaxTime;
+            state.isResting = false;
+            document.getElementById('resting-panel').classList.add('hidden');
+            updateOrderUI();
+        }
+
+        function updateOrderUI() {
+            const container = document.getElementById('order-items-list');
+            container.innerHTML = '';
+            state.activeOrder.forEach(item => {
+                const isDone = item.packed >= item.needed;
+                const el = document.createElement('div');
+                el.className = `flex justify-between items-center bg-slate-900/80 px-3 py-1.5 rounded-xl border ${isDone ? 'border-emerald-500/50 text-emerald-300' : 'border-slate-800 text-slate-100'}`;
+                el.innerHTML = `
+                    <div class="flex items-center gap-1.5 text-xs">
+                        <span class="text-lg">${item.type.icon}</span>
+                        <span class="font-bold">${item.type.name}</span>
+                    </div>
+                    <div class="font-black text-sm ${isDone ? 'text-emerald-400' : 'text-amber-400'}">${item.packed}/${item.needed}</div>
+                `;
+                container.appendChild(el);
+            });
+        }
+
+        // --- ระบบคลิกจิ้มเลือกไอเทม 3D ---
+        function onItemSelect(event) {
+            if (!state.gameStarted || state.isResting) return;
+
+            const container = document.getElementById('canvas-container');
+            const rect = container.getBoundingClientRect();
+
+            mouse.x = ((event.clientX - rect.left) / container.clientWidth) * 2 - 1;
+            mouse.y = -((event.clientY - rect.top) / container.clientHeight) * 2 + 1;
+
+            raycaster.setFromCamera(mouse, camera);
+
+            const targets = state.items.filter(i => i.state === 'idle').map(i => i.mesh);
+            const intersects = raycaster.intersectObjects(targets);
+
+            if (intersects.length > 0) {
+                const clickedMesh = intersects[0].object;
+                const clickedItem = state.items.find(i => i.mesh === clickedMesh);
+
+                if (clickedItem) {
+                    const req = state.activeOrder.find(o => o.type.id === clickedItem.type.id && o.packed < o.needed);
+                    if (req) {
+                        clickedItem.state = 'flying';
+                        clickedItem.originPos = clickedItem.mesh.position.clone();
+                    } else {
+                        createFloatingText("ไม่ใช่ชนิดที่ตามหา! ❌", event.clientX, event.clientY, "text-red-400");
+                    }
+                }
+            }
+        }
+
+        // --- LOOP อัปเดตเฟรมเรตและเรนเดอร์ ---
+        function animate(timestamp) {
+            requestAnimationFrame(animate);
+            if (controls) controls.update();
+
+            // อัปเดตท่าทางลอยและแอนิเมชันบิน
+            state.items.forEach((item, index) => {
+                if (item.state === 'idle') {
+                    item.mesh.rotation.y += 0.02;
+                    item.mesh.position.y = 0.35 + Math.sin(timestamp * 0.0035 + item.bounceOffset) * 0.07;
+                } else if (item.state === 'flying') {
+                    item.flyProgress += 0.08;
+                    // บินตรงดิ่งเข้าไปในกล่องม่วงกลางเกาะ
+                    item.mesh.position.lerpVectors(item.originPos, new THREE.Vector3(0, 0.6, 0), item.flyProgress);
+                    const scaleVal = 1 - item.flyProgress;
+                    item.mesh.scale.set(scaleVal, scaleVal, scaleVal);
+
+                    if (item.flyProgress >= 1.0) {
+                        scene.remove(item.mesh);
+                        state.items.splice(index, 1);
+                        
+                        spawnItem3D(); // เกิดของชิ้นใหม่ทันทีรักษาปริมาณบนเกาะ
+
+                        const req = state.activeOrder.find(o => o.type.id === item.type.id && o.packed < o.needed);
+                        if (req) {
+                            req.packed++;
+                            updateOrderUI();
+                            if (state.activeOrder.every(o => o.packed >= o.needed)) {
+                                finishOrder();
+                            }
+                        }
+                    }
+                }
+            });
+
+            // คอยนับเวลาถอยหลัง (ถ้าระหว่างพัก จะแช่แข็งเวลาชั่วคราว)
+            if (state.gameStarted && !state.isResting) {
+                state.orderTimer -= 0.016;
+                if (state.orderTimer <= 0) {
+                    failOrder();
+                } else {
+                    const pct = (state.orderTimer / state.orderMaxTime) * 100;
+                    document.getElementById('order-timer-bar').style.width = `${pct}%`;
+                    document.getElementById('order-timer-text').innerText = `${Math.ceil(state.orderTimer)}s`;
+                }
+            }
+
+            if (renderer && scene && camera) {
+                renderer.render(scene, camera);
+            }
+        }
+
+        // --- ระบบส่งพัสดุสำเร็จและพักเหนื่อย ---
+        function finishOrder() {
+            let reward = 0;
+            state.activeOrder.forEach(o => { reward += o.needed * o.type.value; });
+            state.money += reward;
+            state.score += 1;
+            updateStatsUI();
+
+            createFloatingText(`สำเร็จเรียบร้อย! +🪙${reward}`, window.innerWidth / 2, window.innerHeight / 2 - 40, "text-yellow-400 font-extrabold");
+
+            // ดึงหน้าต่าง "พักผ่อน" เพื่อพักหยุดเล่นชั่วคราว เวลาหยุดเดิน
+            state.isResting = true;
+            document.getElementById('resting-panel').classList.remove('hidden');
+        }
+
+        function acceptNextOrder() {
+            createOrder();
+        }
+
+        function failOrder() {
+            state.money = Math.max(0, state.money - 15);
+            updateStatsUI();
+            createFloatingText(`จัดส่งไม่ทันเวลา! -🪙15`, window.innerWidth / 2, window.innerHeight / 2, "text-red-500 font-extrabold");
+            createOrder();
+        }
+
+        function updateStatsUI() {
+            document.getElementById('money-display').innerText = state.money;
+            document.getElementById('score-display').innerText = state.score;
+        }
+
+        function createFloatingText(text, x, y, colorClass) {
+            const container = document.getElementById('floating-container');
+            const el = document.createElement('div');
+            el.className = `absolute pointer-events-none text-xl z-50 ${colorClass} font-black`;
+            el.style.left = `${x}px`;
+            el.style.top = `${y}px`;
+            el.style.transform = 'translate(-50%, -50%)';
+            el.innerText = text;
+
+            el.animate([
+                { transform: 'translate(-50%, -50%) translateY(0)', opacity: 1 },
+                { transform: 'translate(-50%, -50%) translateY(-50px)', opacity: 0 }
+            ], { duration: 1000, fill: 'forwards' });
+
+            container.appendChild(el);
+            setTimeout(() => el.remove(), 1000);
+        }
+
+        function onWindowResize() {
+            const container = document.getElementById('canvas-container');
+            camera.aspect = container.clientWidth / container.clientHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(container.clientWidth, container.clientHeight);
+        }
+    </script>
+</body>
+</html>
